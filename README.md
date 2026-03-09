@@ -1,83 +1,34 @@
-# New Delhi District Court Cause List Scraper
+# ⚖️ New Delhi District Court Cause List Scraper
 
-This project is a Python-based web application with a Streamlit UI designed to fetch and download cause lists from the New Delhi District Court website. It automates the entire process of form filling and data extraction, generating clean, multi-column PDF reports that include case numbers and advocate names.
+A decoupled, full-stack web scraping application designed to automate the extraction of daily cause lists from the New Delhi District Court website and generate cleanly formatted PDFs. 
 
-While the initial task PDF mentioned the national eCourts portal[cite: 6], this project focuses on the specific New Delhi District Court site as per subsequent instructions. A key finding during development was the website's use of a one-time-use CAPTCHA for every request. This security feature makes fully automated batch processing impossible. Therefore, the application was intelligently designed as a powerful "Batch Helper" to provide the most efficient workflow possible within these constraints.
+**Target URL:** [https://newdelhi.dcourts.gov.in/cause-list-⁄-daily-board/](https://newdelhi.dcourts.gov.in/cause-list-%e2%81%84-daily-board/)
 
-## Features
+## 🚀 Features
+* **Decoupled Architecture:** Lightning-fast static HTML/JS frontend powered by a robust Python/FastAPI backend.
+* **Automated Batch Processing:** Users can queue multiple courts within a complex. The orchestrator systematically loads the required CAPTCHAs, processes the downloads, and seamlessly loops to the next court.
+* **Advanced Bot-Evasion:** Utilizes `undetected_chromedriver` to safely navigate government bot-protection mechanisms.
+* **Automated PDF Generation:** Scraped HTML tables are dynamically parsed and converted into styled, readable PDFs using `reportlab`.
+* **Memory Management:** Includes a background asynchronous task manager to cleanly kill abandoned headless browser sessions, preventing memory leaks in containerized environments.
 
--   **Interactive Web Interface:** Built with Streamlit for a user-friendly experience, fulfilling the bonus requirement for a web interface.
--   **Real-Time Data Fetching:** Dynamically fetches the latest list of Court Complexes and individual Courts directly from the server—no stored data is used.
--   **Single Court PDF Generation:** Allows users to download a formatted PDF cause list for any specific judge by selecting from the dropdowns.
--   **Intelligent Batch Processing:** A "Batch Helper" mode that queues all courts in a selected complex. The user can efficiently process the entire list by simply solving the new CAPTCHA for each court, while the script handles all other repetitive tasks.
--   **Formatted PDF Output:** Generates clean, readable PDF files that include columns for Serial Number, Case Details, and Advocate Name.
+## 🛠️ Tech Stack
 
-## Setup and Installation
+* **Frontend:** HTML5, CSS3, Vanilla JavaScript (Netlify-ready)
+* **Backend:** Python 3.11+, FastAPI, Uvicorn
+* **Scraping Engine:** Selenium WebDriver, `undetected_chromedriver`, BeautifulSoup4
+* **Infrastructure:** Docker, Xvfb (Virtual Framebuffer for headless Chrome)
 
-Follow these steps to set up and run the project locally.
+## ⚠️ Important Deployment Note: Government Geo-Blocking
+The target domain (`.gov.in`) is protected by National Informatics Centre (NIC) firewalls that employ strict network-level geo-blocking. 
+* **The Challenge:** Traffic originating from foreign data centers (such as standard free tiers on Hugging Face, Render, or Heroku in the US/EU) will have their connections silently dropped (Timeout Errors). 
+* **The Solution:** To run this application in a production environment, the Docker container **must be deployed to a server with an Indian IP address** (e.g., AWS EC2 `ap-south-1` Mumbai region or an Indian VPS). For local testing, running the app from a local Indian network works perfectly.
 
-### Prerequisites
+## 💻 Local Setup & Installation
 
--   Python 3.8 or higher
--   Git
+### Option 1: Running via Docker (Recommended)
+Make sure you have Docker installed on your machine.
 
-### Installation Steps
-
-1.  **Clone the repository:**
-    ```bash
-    git clone <your-github-repository-url>
-    cd <repository-folder-name>
-    ```
-
-2.  **Create a virtual environment:**
-    ```bash
-    python -m venv venv
-    source venv/bin/activate  # On Windows, use `venv\Scripts\activate`
-    ```
-
-3.  **Install the required dependencies:**
-    A `requirements.txt` file should be included. Install it using pip.
-    ```bash
-    pip install -r requirements.txt
-    ```
-    *(Note: If a `requirements.txt` file is not present, create one with `pip freeze > requirements.txt` after installing the necessary packages: `streamlit`, `selenium`, `undetected-chromedriver`, `reportlab`, `beautifulsoup4`, `requests`)*
-
-## How to Use
-
-1.  **Run the Streamlit application:**
-    Open your terminal in the project directory and run the following command:
-    ```bash
-    streamlit run main.py
-    ```
-    This will open the web interface in your browser.
-
-2.  **Using the Interface:**
-    -   **Court Selection:** Choose to search by "Court Complex" and select the desired complex from the dropdown. The list of specific courts will load automatically.
-    -   **Details & CAPTCHA:** Select the cause list date and case type. A CAPTCHA image will be displayed. Enter the characters from the image into the input box.
-    -   **For a Single Download:** Select a specific court from the second dropdown and click the **"Generate PDF for Selected Court"** button.
-    -   **For Batch Downloads:**
-        1.  Click **"Start New Batch for All Courts in Complex"**. This will queue up all courts.
-        2.  The UI will show you which court is next.
-        3.  Enter the CAPTCHA for the current request.
-        4.  Click **"Process Next Court"**.
-        5.  The script will download the PDF, and the page will refresh, showing you the *new* CAPTCHA for the *next* court in the queue.
-        6.  Repeat the process of entering the CAPTCHA and clicking "Process Next Court" until the batch is complete.
-
-## Project Structure
-
-```
-.
-├── core.py             # Main logic for Selenium, scraping, and PDF generation
-├── main.py             # Streamlit UI and application flow
-├── output/             # Directory where generated PDFs are saved
-├── requirements.txt    # Project dependencies
-└── README.md           # This file
-```
-
-## Technical Finding: CAPTCHA Handling
-
-A significant challenge identified was the website's security mechanism. It employs a **one-time-use CAPTCHA** that is invalidated immediately after a single form submission.
-
-This makes a fully automated, one-click "Download All" feature technically impossible, as the script cannot programmatically solve the new CAPTCHA required for each subsequent court.
-
-The "Batch Helper" workflow was implemented as the most effective and robust solution. It maximizes automation by handling all data entry and processing, leaving only the non-automatable CAPTCHA-solving step to the user, thus fulfilling the spirit of the project requirements within the website's technical constraints.
+1. Clone the repository:
+   ```bash
+   git clone [https://github.com/YOUR_USERNAME/delhi-court-scraper.git](https://github.com/YOUR_USERNAME/delhi-court-scraper.git)
+   cd delhi-court-scraper
