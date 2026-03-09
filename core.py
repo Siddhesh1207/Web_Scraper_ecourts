@@ -77,8 +77,17 @@ def get_courts_via_api(est_code, service_type):
 # --- SELENIUM FUNCTIONS (Unchanged) ---
 def initialize_driver():
     options = uc.ChromeOptions()
-    options.add_argument("--start-maximized")
-    driver = uc.Chrome(options=options, use_subprocess=True)
+    options.add_argument("--headless") # Essential for hosting
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--window-size=1920,1080")
+    
+    # On Hugging Face, we point to the installed Chromium
+    driver = uc.Chrome(
+        options=options, 
+        use_subprocess=True,
+        browser_executable_path="/usr/bin/chromium" 
+    )
     driver.get(NEW_DELHI_COURTS_URL)
     return driver
 
