@@ -2,11 +2,11 @@
 
 This project is a Python-based web application with a Streamlit UI designed to fetch and download cause lists from the New Delhi District Court website. It automates the entire process of form filling and data extraction, generating clean, multi-column PDF reports that include case numbers and advocate names.
 
-[cite_start]While the initial task PDF mentioned the national eCourts portal[cite: 6], this project focuses on the specific New Delhi District Court site as per subsequent instructions. A key finding during development was the website's use of a one-time-use CAPTCHA for every request. This security feature makes fully automated batch processing impossible. Therefore, the application was intelligently designed as a powerful "Batch Helper" to provide the most efficient workflow possible within these constraints.
+While the initial task PDF mentioned the national eCourts portal[cite: 6], this project focuses on the specific New Delhi District Court site as per subsequent instructions. A key finding during development was the website's use of a one-time-use CAPTCHA for every request. This security feature makes fully automated batch processing impossible. Therefore, the application was intelligently designed as a powerful "Batch Helper" to provide the most efficient workflow possible within these constraints.
 
 ## Features
 
--   [cite_start]**Interactive Web Interface:** Built with Streamlit for a user-friendly experience, fulfilling the bonus requirement for a web interface. [cite: 18]
+-   **Interactive Web Interface:** Built with Streamlit for a user-friendly experience, fulfilling the bonus requirement for a web interface.
 -   **Real-Time Data Fetching:** Dynamically fetches the latest list of Court Complexes and individual Courts directly from the server—no stored data is used.
 -   **Single Court PDF Generation:** Allows users to download a formatted PDF cause list for any specific judge by selecting from the dropdowns.
 -   **Intelligent Batch Processing:** A "Batch Helper" mode that queues all courts in a selected complex. The user can efficiently process the entire list by simply solving the new CAPTCHA for each court, while the script handles all other repetitive tasks.
