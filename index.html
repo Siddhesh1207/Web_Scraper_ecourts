@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>New Delhi Cause List Generator</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #3b82f6;
+            --primary-hover: #2563eb;
+            --bg-color: #f3f4f6;
+            --card-bg: #ffffff;
+            --text-main: #1f2937;
+            --text-muted: #6b7280;
+            --border: #e5e7eb;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #f6f8fb 0%, #e5ebf4 100%);
+            color: var(--text-main);
+            min-height: 100vh;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        .card {
+            background: var(--card-bg);
+            width: 100%;
+            max-width: 550px;
+            padding: 32px;
+            border-radius: 16px;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+            animation: slideUp 0.5s ease-out;
+        }
+
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .animate-fade-in {
+            animation: fadeIn 0.4s ease-out forwards;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        h2 { margin-top: 0; font-weight: 700; display: flex; align-items: center; gap: 10px; border-bottom: 2px solid var(--border); padding-bottom: 16px; margin-bottom: 24px; }
+        .form-group { margin-bottom: 20px; }
+        label { display: block; font-weight: 500; margin-bottom: 6px; font-size: 0.9rem; }
+        
+        select, input {
+            width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 8px;
+            background-color: #f9fafb; font-size: 0.95rem; font-family: inherit; transition: all 0.2s; box-sizing: border-box;
+        }
+        select:focus, input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2); background-color: #fff; }
+
+        button {
+            width: 100%; background-color: var(--primary); color: white; padding: 14px; border: none;
+            border-radius: 8px; font-size: 1rem; font-weight: 600; cursor: pointer; transition: all 0.2s;
+            display: flex; justify-content: center; align-items: center; gap: 8px;
+        }
+        button:hover:not(:disabled) { background-color: var(--primary-hover); transform: translateY(-1px); }
+        button:disabled { background-color: #9ca3af; cursor: not-allowed; opacity: 0.8; }
+        .btn-secondary { background-color: #4b5563; }
+        .btn-secondary:hover:not(:disabled) { background-color: #374151; }
+        .btn-outline { background-color: transparent; border: 2px solid #8b5cf6; color: #8b5cf6; margin-top: 10px; }
+        .btn-outline:hover:not(:disabled) { background-color: #8b5cf6; color: white; }
+
+        #captcha-container { text-align: center; background: #f9fafb; border: 1px dashed #d1d5db; border-radius: 8px; padding: 16px; margin-top: 12px; }
+        #captcha-img { max-width: 100%; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+
+        .hidden { display: none !important; }
+
+        #status-msg { margin-top: 20px; font-weight: 500; text-align: center; font-size: 0.95rem; padding: 12px; border-radius: 8px; }
+        .status-info { background-color: #e0f2fe; color: #0369a1; }
+        .status-success { background-color: #dcfce3; color: #166534; }
+        .status-error { background-color: #fee2e2; color: #991b1b; }
+
+        #batch-panel { background: #fdf4ff; border: 1px solid #f0abfc; padding: 16px; border-radius: 8px; margin-top: 20px; }
+        #batch-history { max-height: 120px; overflow-y: auto; font-size: 0.85rem; margin-top: 10px; color: #4b5563; line-height: 1.6; }
+
+        .spinner { border: 3px solid rgba(255,255,255,0.3); border-radius: 50%; border-top: 3px solid white; width: 18px; height: 18px; animation: spin 1s linear infinite; display: none; }
+        .is-loading .spinner { display: inline-block; }
+        .is-loading .btn-text { display: none; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h2>⚖️ Cause List Generator</h2>
+    
+    <div id="status-msg" class="status-info hidden"></div>
+
+    <div class="form-group">
+        <label>Search By</label>
+        <select id="search-type" onchange="updatePrimaryList()">
+            <option value="courtComplex">Court Complex</option>
+            <option value="courtEstablishment">Court Establishment</option>
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label>Location</label>
+        <select id="primary-select" onchange="fetchCourts()"><option>Loading...</option></select>
+    </div>
+
+    <div class="form-group">
+        <label>Court</label>
+        <select id="court-select"><option>Select Location First</option></select>
+    </div>
+
+    <div class="form-group" style="display: flex; gap: 16px;">
+        <div style="flex: 1;">
+            <label>Date</label>
+            <input type="date" id="date-input">
+        </div>
+        <div style="flex: 1;">
+            <label>Case Type</label>
+            <select id="case-type">
+                <option value="Civil">Civil</option>
+                <option value="Criminal">Criminal</option>
+            </select>
+        </div>
+    </div>
+
+    <div class="form-group">
+        <button type="button" class="btn-secondary" onclick="loadCaptcha()" id="btn-captcha">
+            <div class="spinner"></div>
+            <span class="btn-text">Load CAPTCHA for Single Court</span>
+        </button>
+        <button type="button" class="btn-outline" onclick="startBatchMode()" id="btn-start-batch">
+            <span class="btn-text">⚡ Start Batch for All Courts</span>
+        </button>
+        
+        <div id="captcha-container" class="hidden animate-fade-in">
+            <img id="captcha-img" alt="Captcha">
+            <input type="text" id="captcha-input" placeholder="Enter CAPTCHA exactly as shown" style="margin-top: 12px; text-align: center; font-weight: bold; letter-spacing: 2px;">
+        </div>
+    </div>
+
+    <div id="batch-panel" class="hidden animate-fade-in">
+        <h4 style="margin: 0 0 8px 0; color: #86198f;">⚡ Batch Processing</h4>
+        <div id="batch-status" style="font-weight: 600; color: #a21caf;"></div>
+        <div id="batch-history"></div>
+    </div>
+
+    <button id="btn-submit" class="hidden animate-fade-in" onclick="submitForm()">
+        <div class="spinner"></div>
+        <span class="btn-text">Generate & Download PDF</span>
+    </button>
+</div>
+
+<script>
+    const API_BASE = window.location.origin + "/api"; 
+    
+    let initData = {};
+    let currentSessionId = "";
+    
+    // Batch variables
+    let batchQueue = [];
+    let isBatchMode = false;
+
+    document.getElementById('date-input').valueAsDate = new Date();
+
+    function setStatus(msg, type) {
+        const el = document.getElementById('status-msg');
+        el.innerText = msg;
+        el.className = `status-${type} animate-fade-in`;
+        el.classList.remove('hidden');
+    }
+
+    async function initialize() {
+        try {
+            const res = await fetch(`${API_BASE}/init`);
+            initData = await res.json();
+            updatePrimaryList();
+        } catch (e) {
+            setStatus("Error connecting to server. Please refresh the page.", "error");
+        }
+    }
+
+    function updatePrimaryList() {
+        const type = document.getElementById('search-type').value;
+        const select = document.getElementById('primary-select');
+        select.innerHTML = '';
+        
+        const data = type === 'courtComplex' ? initData.complex_list : initData.establishment_list;
+        for (const [name, val] of Object.entries(data)) {
+            select.innerHTML += `<option value="${val}">${name}</option>`;
+        }
+        fetchCourts();
+    }
+
+    async function fetchCourts() {
+        const estCode = document.getElementById('primary-select').value;
+        const type = document.getElementById('search-type').value;
+        document.getElementById('court-select').innerHTML = '<option>Loading courts...</option>';
+        
+        try {
+            const res = await fetch(`${API_BASE}/courts?est_code=${estCode}&service_type=${type}`);
+            const courts = await res.json();
+            
+            const select = document.getElementById('court-select');
+            select.innerHTML = '';
+            for (const [name, val] of Object.entries(courts)) {
+                select.innerHTML += `<option value="${val}">${name}</option>`;
+            }
+        } catch (e) {
+            document.getElementById('court-select').innerHTML = '<option>Error loading courts</option>';
+        }
+    }
+
+    // --- BATCH LOGIC ---
+    function startBatchMode() {
+        const select = document.getElementById('court-select');
+        if (select.options.length === 0 || select.options[0].text === "Loading courts...") {
+            setStatus("Please wait for courts to load.", "error");
+            return;
+        }
+
+        batchQueue = [];
+        for (let i = 0; i < select.options.length; i++) {
+            if (select.options[i].value) {
+                batchQueue.push({ name: select.options[i].text, value: select.options[i].value });
+            }
+        }
+
+        if (batchQueue.length > 0) {
+            isBatchMode = true;
+            document.getElementById('btn-start-batch').classList.add('hidden');
+            document.getElementById('btn-captcha').classList.add('hidden');
+            document.getElementById('batch-panel').classList.remove('hidden');
+            document.getElementById('batch-history').innerHTML = '';
+            processNextBatchCourt();
+        }
+    }
+
+    async function processNextBatchCourt() {
+        if (batchQueue.length === 0) {
+            isBatchMode = false;
+            document.getElementById('batch-status').innerText = "🎉 All courts processed!";
+            document.getElementById('btn-submit').classList.add('hidden');
+            document.getElementById('captcha-container').classList.add('hidden');
+            document.getElementById('btn-start-batch').classList.remove('hidden');
+            document.getElementById('btn-captcha').classList.remove('hidden');
+            return;
+        }
+
+        const currentCourt = batchQueue[0];
+        document.getElementById('batch-status').innerText = `Next Up: ${currentCourt.name} (${batchQueue.length} remaining)`;
+        
+        // Auto-select the dropdown to match the batch queue so the backend gets the correct court
+        document.getElementById('court-select').value = currentCourt.value;
+
+        // Automatically fetch a new CAPTCHA for this specific court
+        setStatus(`Loading browser for ${currentCourt.name}...`, "info");
+        await loadCaptcha();
+        
+        document.getElementById('btn-submit').querySelector('.btn-text').innerText = "Process & Load Next";
+        setStatus(`Please enter the CAPTCHA for ${currentCourt.name}.`, "info");
+    }
+
+    function addBatchHistory(msg) {
+        const history = document.getElementById('batch-history');
+        history.innerHTML = `<div>${msg}</div>` + history.innerHTML;
+    }
+
+    // --- MAIN API CALLS ---
+    async function loadCaptcha() {
+        const btn = document.getElementById('btn-captcha');
+        const container = document.getElementById('captcha-container');
+        const img = document.getElementById('captcha-img');
+        const submitBtn = document.getElementById('btn-submit');
+        
+        btn.classList.add('is-loading');
+        btn.disabled = true;
+        
+        try {
+            const res = await fetch(`${API_BASE}/captcha`);
+            if(!res.ok) throw new Error("Failed to initialize");
+            
+            const data = await res.json();
+            currentSessionId = data.session_id;
+            img.src = "data:image/png;base64," + data.captcha_base64;
+            
+            container.classList.remove('hidden');
+            submitBtn.classList.remove('hidden');
+            
+            btn.querySelector('.btn-text').innerText = "Refresh CAPTCHA";
+            document.getElementById('captcha-input').value = ""; 
+        } catch (e) {
+            setStatus("Failed to load CAPTCHA.", "error");
+        } finally {
+            btn.classList.remove('is-loading');
+            btn.disabled = false;
+        }
+    }
+
+    async function submitForm() {
+        const submitBtn = document.getElementById('btn-submit');
+        const captchaInput = document.getElementById('captcha-input').value;
+        
+        if (!captchaInput) {
+            setStatus("Please enter the CAPTCHA code.", "error");
+            return;
+        }
+
+        submitBtn.classList.add('is-loading');
+        submitBtn.disabled = true;
+        setStatus("Scraping in progress... Please wait.", "info");
+
+        const payload = {
+            session_id: currentSessionId,
+            search_by: document.getElementById('search-type').value,
+            primary_val: document.getElementById('primary-select').value,
+            court_val: document.getElementById('court-select').value,
+            date_str: document.getElementById('date-input').value,
+            case_type: document.getElementById('case-type').value,
+            captcha_text: captchaInput
+        };
+
+        try {
+            const res = await fetch(`${API_BASE}/submit`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            });
+            
+            const result = await res.json();
+            
+            if (result.status === "success") {
+                // Handle Download
+                const byteCharacters = atob(result.pdf_base64);
+                const byteNumbers = new Array(byteCharacters.length);
+                for (let i = 0; i < byteCharacters.length; i++) { byteNumbers[i] = byteCharacters.charCodeAt(i); }
+                const byteArray = new Uint8Array(byteNumbers);
+                const blob = new Blob([byteArray], {type: 'application/pdf'});
+                const link = document.createElement('a');
+                link.href = window.URL.createObjectURL(blob);
+                link.download = result.file_name;
+                link.click();
+                
+                setStatus("Success! PDF generated.", "success");
+
+                if (isBatchMode) {
+                    const finishedCourt = batchQueue.shift(); // Remove from queue
+                    addBatchHistory(`✅ <b>${finishedCourt.name}</b> - Downloaded`);
+                    await processNextBatchCourt(); // Loop to next court
+                } else {
+                    // Reset normal Single Mode form
+                    document.getElementById('captcha-container').classList.add('hidden');
+                    submitBtn.classList.add('hidden');
+                    document.getElementById('btn-captcha').querySelector('.btn-text').innerText = "Load New CAPTCHA";
+                }
+            } else {
+                setStatus(result.data, "error");
+                if (isBatchMode) {
+                    // If error, do not shift from queue. Just prompt them to try again.
+                    addBatchHistory(`❌ <b>${batchQueue[0].name}</b> - ${result.data}`);
+                    setStatus("Error occurred. Loading a fresh CAPTCHA so you can retry...", "error");
+                    await loadCaptcha();
+                }
+            }
+        } catch (e) {
+            setStatus("Network Error. Please try again.", "error");
+        }
+        
+        // Always unlock the submit button after processing, regardless of batch mode!
+        submitBtn.classList.remove('is-loading');
+        submitBtn.disabled = false;
+    }
+
+    window.onload = initialize;
+</script>
+
+</body>
+</html>
