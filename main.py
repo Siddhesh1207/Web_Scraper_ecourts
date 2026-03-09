@@ -1,6 +1,8 @@
+# main.py
 import streamlit as st
 from datetime import date, timedelta
 import core
+import os  # Fixed the missing import that caused your error
 
 st.set_page_config(page_title="New Delhi Cause List Generator", layout="wide")
 st.title("⚖️ New Delhi District Court PDF Cause List Generator")
@@ -35,10 +37,10 @@ with col1:
     search_type = "courtComplex" if search_type_display == "Court Complex" else "courtEstablishment"
 
     if search_type == "courtComplex":
-        selected_primary_name = st.selectbox("Select Court Complex", st.session_state.complex_list.keys(), key="sb_complex")
+        selected_primary_name = st.selectbox("Select Court Complex", list(st.session_state.complex_list.keys()), key="sb_complex")
         selected_primary_value = st.session_state.complex_list.get(selected_primary_name)
     else:
-        selected_primary_name = st.selectbox("Select Court Establishment", st.session_state.establishment_list.keys(), key="sb_establishment")
+        selected_primary_name = st.selectbox("Select Court Establishment", list(st.session_state.establishment_list.keys()), key="sb_establishment")
         selected_primary_value = st.session_state.establishment_list.get(selected_primary_name)
     
     if selected_primary_value and selected_primary_value != st.session_state.last_primary_id:
@@ -49,7 +51,7 @@ with col1:
             st.session_state.batch_results = []
 
     if st.session_state.court_list:
-        selected_court_name = st.selectbox("Select Specific Court (for single download)", st.session_state.court_list.keys())
+        selected_court_name = st.selectbox("Select Specific Court (for single download)", list(st.session_state.court_list.keys()))
         selected_court_value = st.session_state.court_list.get(selected_court_name)
     else:
         st.warning("No courts loaded.")
@@ -64,7 +66,7 @@ with col2:
     st.write("**Enter the CAPTCHA code:**")
     
     if st.button("Refresh CAPTCHA"):
-        st.rerun() # Just rerun the script to get a new image
+        st.rerun() 
 
     captcha_path = core.get_captcha_image(driver)
     if captcha_path:
@@ -84,7 +86,17 @@ if st.button("Generate PDF for Selected Court", use_container_width=True, disabl
             result = core.process_cause_list(driver, search_type, selected_primary_value, selected_court_value, cause_list_date, case_type, captcha_text)
         
         if result['status'] == 'success':
-            st.success(f"Generated `{result['file']}` in the 'output' folder.")
+            st.success(f"Generated successfully!")
+            file_path = os.path.join("output", result['file'])
+            if os.path.exists(file_path):
+                with open(file_path, "rb") as f:
+                    st.download_button(
+                        label="📥 Download Cause List PDF",
+                        data=f,
+                        file_name=result['file'],
+                        mime="application/pdf",
+                        use_container_width=True
+                    )
         else:
             st.error(f"Failed: {result['data']}")
     else:
@@ -104,7 +116,6 @@ if st.button("Start New Batch for All Courts in Complex", use_container_width=Tr
         st.error("No court list is loaded. Please select a complex first.")
 
 if st.session_state.court_queue:
-    
     next_court_name, next_court_value = st.session_state.court_queue[0]
     
     st.warning(f"**Next in queue:** {next_court_name}")
@@ -115,39 +126,46 @@ if st.session_state.court_queue:
             st.error("Please enter the CAPTCHA to proceed!")
         else:
             with st.spinner(f"Processing {next_court_name}..."):
-                
                 result = core.process_cause_list(
                     driver,
                     search_type,
                     selected_primary_value,
-                    next_court_value, # Use the next court's value
+                    next_court_value,
                     cause_list_date,
                     case_type,
                     captcha_text
                 )
                 
-                # --- THIS IS THE KEY LOGIC ---
-                # Only remove the court from the queue IF it was successful
                 if result['status'] == 'success':
-                    st.session_state.batch_results.append(f"✅ **{next_court_name}:** Generated `{result['file']}`")
+                    st.session_state.batch_results.append({
+                        "status": "success",
+                        "court": next_court_name,
+                        "file": result['file']
+                    })
                     st.session_state.court_queue.pop(0) # Success! Remove from queue.
                 else:
-                    st.session_state.batch_results.append(f"❌ **{next_court_name}:** Failed - {result['data']}. **Please try again with the new CAPTCHA.**")
-                    # On failure, we DO NOT pop from the queue. It will be retried next.
-
+                    st.session_state.batch_results.append({
+                        "status": "error",
+                        "court": next_court_name,
+                        "error": result['data']
+                    })
             st.rerun()
 
 # Display results from the batch process
 if st.session_state.batch_results:
     st.markdown("---")
-    st.subheader("Batch Results")
-    # Display the most recent result prominently
-    st.markdown(st.session_state.batch_results[-1])
+    st.subheader("Batch History")
     
-    # Show a summary of older results
-    with st.expander("Show all results"):
-        for res in reversed(st.session_state.batch_results):
-            st.markdown(res)
+    for res in reversed(st.session_state.batch_results):
+        if res["status"] == "success":
+            col_msg, col_btn = st.columns([3, 1])
+            col_msg.success(f"✅ {res['court']}")
+            file_path = os.path.join("output", res["file"])
+            if os.path.exists(file_path):
+                with open(file_path, "rb") as f:
+                    col_btn.download_button("Download", f, file_name=res["file"], key=res["file"])
+        else:
+            st.error(f"❌ {res['court']}: {res['error']}")
 
 if not st.session_state.court_queue and len(st.session_state.batch_results) > 0:
     st.success("🎉 Batch complete! All courts have been processed.")
