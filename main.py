@@ -1,171 +1,117 @@
 # main.py
-import streamlit as st
-from datetime import date, timedelta
+import os
+import uuid
+import base64
+import asyncio
+from datetime import datetime, timedelta
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from pydantic import BaseModel
 import core
-import os  # Fixed the missing import that caused your error
 
-st.set_page_config(page_title="New Delhi Cause List Generator", layout="wide")
-st.title("⚖️ New Delhi District Court PDF Cause List Generator")
+app = FastAPI()
 
-# --- Initialize the driver at the start ---
-if 'driver' not in st.session_state:
-    with st.spinner("Initializing browser... Please wait."):
-        st.session_state.driver = core.initialize_driver()
-driver = st.session_state.driver
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], 
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-# --- Session State Caching ---
-if 'complex_list' not in st.session_state:
-    st.session_state.complex_list = {}
-    st.session_state.establishment_list = {}
-    st.session_state.last_primary_id = None
-    st.session_state.court_list = {}
-    # State for batch processing
-    st.session_state.court_queue = []
-    st.session_state.batch_results = []
+# In-memory dictionary to keep browser instances alive with timestamps
+active_sessions = {}
 
-# --- Fetch initial data using the API method ---
-if not st.session_state.complex_list:
-    with st.spinner("Fetching court complex and establishment lists..."):
-        st.session_state.complex_list, st.session_state.establishment_list = core.get_complex_and_establishment_lists()
+# --- ROUTE: Serve the Frontend UI ---
+@app.get("/")
+def serve_frontend():
+    return FileResponse("index.html")
 
-# --- UI Layout ---
-col1, col2 = st.columns(2)
-
-with col1:
-    st.subheader("1. Court Selection")
-    search_type_display = st.radio("Search By", ("Court Complex", "Court Establishment"), key="search_type_radio")
-    search_type = "courtComplex" if search_type_display == "Court Complex" else "courtEstablishment"
-
-    if search_type == "courtComplex":
-        selected_primary_name = st.selectbox("Select Court Complex", list(st.session_state.complex_list.keys()), key="sb_complex")
-        selected_primary_value = st.session_state.complex_list.get(selected_primary_name)
-    else:
-        selected_primary_name = st.selectbox("Select Court Establishment", list(st.session_state.establishment_list.keys()), key="sb_establishment")
-        selected_primary_value = st.session_state.establishment_list.get(selected_primary_name)
-    
-    if selected_primary_value and selected_primary_value != st.session_state.last_primary_id:
-        with st.spinner("Fetching court list from server..."):
-            st.session_state.court_list = core.get_courts_via_api(selected_primary_value, search_type)
-            st.session_state.last_primary_id = selected_primary_value
-            st.session_state.court_queue = [] # Reset queue if complex changes
-            st.session_state.batch_results = []
-
-    if st.session_state.court_list:
-        selected_court_name = st.selectbox("Select Specific Court (for single download)", list(st.session_state.court_list.keys()))
-        selected_court_value = st.session_state.court_list.get(selected_court_name)
-    else:
-        st.warning("No courts loaded.")
-        selected_court_value = None
-
-with col2:
-    st.subheader("2. Details & CAPTCHA")
-    today = date.today()
-    cause_list_date = st.date_input("Select Cause List Date", today, min_value=today - timedelta(days=30), max_value=today)
-    case_type = st.radio("Case Type", ("Civil", "Criminal"), horizontal=True)
-    
-    st.write("**Enter the CAPTCHA code:**")
-    
-    if st.button("Refresh CAPTCHA"):
-        st.rerun() 
-
-    captcha_path = core.get_captcha_image(driver)
-    if captcha_path:
-        st.image(captcha_path)
-    else:
-        st.error("Could not load CAPTCHA image. Try refreshing.")
+# --- MEMORY MANAGEMENT: Background task to kill abandoned browsers ---
+async def cleanup_sessions():
+    while True:
+        now = datetime.now()
+        expired_keys = []
+        for session_id, session_data in active_sessions.items():
+            if now - session_data['timestamp'] > timedelta(minutes=5): # 5 min timeout
+                try:
+                    session_data['driver'].quit()
+                except:
+                    pass
+                expired_keys.append(session_id)
         
-    captcha_text = st.text_input("Enter Captcha", label_visibility="collapsed")
+        for k in expired_keys:
+            del active_sessions[k]
+            
+        await asyncio.sleep(60) # Run check every minute
 
-# --- Single Download Button ---
-st.markdown("---")
-st.subheader("3. Single Court Download")
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(cleanup_sessions())
 
-if st.button("Generate PDF for Selected Court", use_container_width=True, disabled=not selected_court_value):
-    if captcha_text and selected_court_value and selected_primary_value:
-        with st.spinner(f"Submitting form for {selected_court_name}..."):
-            result = core.process_cause_list(driver, search_type, selected_primary_value, selected_court_value, cause_list_date, case_type, captcha_text)
+# --- API ROUTES ---
+@app.get("/api/init")
+def get_initial_data():
+    complex_list, est_list = core.get_complex_and_establishment_lists()
+    return {"complex_list": complex_list, "establishment_list": est_list}
+
+@app.get("/api/courts")
+def get_courts(est_code: str, service_type: str):
+    return core.get_courts_via_api(est_code, service_type)
+
+@app.get("/api/captcha")
+def get_captcha():
+    session_id = str(uuid.uuid4())
+    driver = core.initialize_driver()
+    
+    # Store the driver alongside a timestamp for our cleanup task
+    active_sessions[session_id] = {
+        'driver': driver,
+        'timestamp': datetime.now()
+    }
+    
+    captcha_path = core.get_captcha_image(driver)
+    if not captcha_path or not os.path.exists(captcha_path):
+        raise HTTPException(status_code=500, detail="Failed to load CAPTCHA")
+        
+    with open(captcha_path, "rb") as image_file:
+        encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
+        
+    return {"session_id": session_id, "captcha_base64": encoded_string}
+
+class SubmitRequest(BaseModel):
+    session_id: str
+    search_by: str
+    primary_val: str
+    court_val: str
+    date_str: str
+    case_type: str
+    captcha_text: str
+
+@app.post("/api/submit")
+def submit_form(req: SubmitRequest):
+    session_data = active_sessions.get(req.session_id)
+    if not session_data:
+        raise HTTPException(status_code=400, detail="Session expired. Please refresh the CAPTCHA.")
+        
+    driver = session_data['driver']
+    
+    try:
+        date_obj = datetime.strptime(req.date_str, "%Y-%m-%d").date()
+        result = core.process_cause_list(
+            driver, req.search_by, req.primary_val, req.court_val, 
+            date_obj, req.case_type, req.captcha_text
+        )
         
         if result['status'] == 'success':
-            st.success(f"Generated successfully!")
             file_path = os.path.join("output", result['file'])
-            if os.path.exists(file_path):
-                with open(file_path, "rb") as f:
-                    st.download_button(
-                        label="📥 Download Cause List PDF",
-                        data=f,
-                        file_name=result['file'],
-                        mime="application/pdf",
-                        use_container_width=True
-                    )
+            with open(file_path, "rb") as f:
+                pdf_b64 = base64.b64encode(f.read()).decode('utf-8')
+            return {"status": "success", "file_name": result['file'], "pdf_base64": pdf_b64}
         else:
-            st.error(f"Failed: {result['data']}")
-    else:
-        st.warning("Please ensure a court is selected and CAPTCHA is entered.")
-
-# --- START: REVISED BATCH PROCESSING SECTION ---
-st.markdown("---")
-st.subheader("4. Batch Download Helper")
-
-if st.button("Start New Batch for All Courts in Complex", use_container_width=True):
-    if st.session_state.court_list:
-        st.session_state.court_queue = list(st.session_state.court_list.items())
-        st.session_state.batch_results = []
-        st.info(f"Batch initialized with {len(st.session_state.court_queue)} courts. The next court is ready below.")
-        st.rerun()
-    else:
-        st.error("No court list is loaded. Please select a complex first.")
-
-if st.session_state.court_queue:
-    next_court_name, next_court_value = st.session_state.court_queue[0]
-    
-    st.warning(f"**Next in queue:** {next_court_name}")
-    st.write(f"Remaining courts to process: {len(st.session_state.court_queue)}")
-
-    if st.button("Process Next Court", use_container_width=True, type="primary"):
-        if not captcha_text:
-            st.error("Please enter the CAPTCHA to proceed!")
-        else:
-            with st.spinner(f"Processing {next_court_name}..."):
-                result = core.process_cause_list(
-                    driver,
-                    search_type,
-                    selected_primary_value,
-                    next_court_value,
-                    cause_list_date,
-                    case_type,
-                    captcha_text
-                )
-                
-                if result['status'] == 'success':
-                    st.session_state.batch_results.append({
-                        "status": "success",
-                        "court": next_court_name,
-                        "file": result['file']
-                    })
-                    st.session_state.court_queue.pop(0) # Success! Remove from queue.
-                else:
-                    st.session_state.batch_results.append({
-                        "status": "error",
-                        "court": next_court_name,
-                        "error": result['data']
-                    })
-            st.rerun()
-
-# Display results from the batch process
-if st.session_state.batch_results:
-    st.markdown("---")
-    st.subheader("Batch History")
-    
-    for res in reversed(st.session_state.batch_results):
-        if res["status"] == "success":
-            col_msg, col_btn = st.columns([3, 1])
-            col_msg.success(f"✅ {res['court']}")
-            file_path = os.path.join("output", res["file"])
-            if os.path.exists(file_path):
-                with open(file_path, "rb") as f:
-                    col_btn.download_button("Download", f, file_name=res["file"], key=res["file"])
-        else:
-            st.error(f"❌ {res['court']}: {res['error']}")
-
-if not st.session_state.court_queue and len(st.session_state.batch_results) > 0:
-    st.success("🎉 Batch complete! All courts have been processed.")
+            return result
+    finally:
+        # Always kill the browser after scraping
+        driver.quit()
+        if req.session_id in active_sessions:
+            del active_sessions[req.session_id]
