@@ -1,5 +1,8 @@
 # core.py
 import os
+import shutil
+import platform
+import undetected_chromedriver as uc
 import time
 import requests
 import traceback
@@ -82,12 +85,30 @@ def initialize_driver():
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--window-size=1920,1080")
     
-    # On Hugging Face, we point to the installed Chromium
-    driver = uc.Chrome(
-        options=options, 
-        use_subprocess=True,
-        browser_executable_path="/usr/bin/chromium" 
-    )
+    # Check if running on Windows (local testing) or Linux (Docker/Hugging Face)
+    if platform.system() == "Windows":
+        # On Windows, force it to use the driver version that matches your local Chrome
+        driver = uc.Chrome(
+            options=options, 
+            use_subprocess=True,
+            version_main=145  # <-- ADD THIS LINE
+        )
+    else:
+        # On Linux (Hugging Face), explicitly define the paths for the Docker container
+        system_driver_path = "/usr/bin/chromedriver"
+        local_driver_path = os.path.join(os.getcwd(), "chromedriver")
+        
+        if not os.path.exists(local_driver_path):
+            shutil.copy(system_driver_path, local_driver_path)
+            os.chmod(local_driver_path, 0o777) 
+        
+        driver = uc.Chrome(
+            options=options, 
+            use_subprocess=True,
+            browser_executable_path="/usr/bin/chromium",
+            driver_executable_path=local_driver_path 
+        )
+        
     driver.get(NEW_DELHI_COURTS_URL)
     return driver
 
@@ -109,28 +130,32 @@ def _scrape_and_process_result(driver):
         wait = WebDriverWait(driver, 45)
         print("Waiting for a response after submission...")
 
-        # THE KEY: Wait for ANY of the three possible outcomes after submitting the form.
+        # Wait for ANY of the three possible outcomes after submitting the form.
         wait.until(EC.any_of(
-            EC.visibility_of_element_located((By.ID, "cnrResults")), # Outcome 1: Success (results container appears)
-            EC.visibility_of_element_located((By.CLASS_NAME, "siwp_captcha_error_message")), # Outcome 2: CAPTCHA Error
-            EC.visibility_of_element_located((By.XPATH, "//*[contains(text(), 'No Record Found')]")) # Outcome 3: No Records
+            EC.visibility_of_element_located((By.ID, "cnrResults")), 
+            EC.visibility_of_element_located((By.CLASS_NAME, "siwp_captcha_error_message")), 
+            EC.visibility_of_element_located((By.XPATH, "//*[contains(text(), 'No Record Found')]")) 
         ))
         print("...Page has responded.")
 
-        # Now, check which outcome occurred.
+        # Check for CAPTCHA error first.
         try:
-            # Check for CAPTCHA error first.
             error_msg = driver.find_element(By.CLASS_NAME, "siwp_captcha_error_message").text
             return {"status": "error", "data": f"CAPTCHA Error: {error_msg}. Please enter the new CAPTCHA and try again."}
         except NoSuchElementException:
-            # If no CAPTCHA error, proceed.
-            pass
+            pass # No CAPTCHA error, proceed
 
+        # Success Path
         try:
-            # This is the success path.
             results_container = driver.find_element(By.ID, "cnrResults")
+            
             if "No Record Found" in results_container.text:
                 return {"status": "info", "data": "No records found for this court."}
+
+            # DEBUGGING: Print the raw HTML of the results to your terminal
+            print("--- HTML RECEIVED ---")
+            print(results_container.get_attribute('innerHTML')[:800]) 
+            print("---------------------")
 
             cases = []
             table_rows = results_container.find_elements(By.CSS_SELECTOR, "table.data-table-1 tbody tr")
@@ -142,17 +167,37 @@ def _scrape_and_process_result(driver):
                 except NoSuchElementException:
                     continue
             
+            # Resilient Extraction: Don't crash if a single tag is missing
+            court_name = "Court Name Not Found"
+            judge_name = "Judge Name Not Found"
+            listing_date = "Date Not Found"
+
+            try:
+                court_name = results_container.find_element(By.TAG_NAME, "h5").text
+            except NoSuchElementException:
+                pass
+
+            try:
+                judge_name = results_container.find_element(By.XPATH, ".//p[contains(., 'In The Court Of')]").text.replace("In The Court Of : ", "")
+            except NoSuchElementException:
+                pass
+
+            try:
+                listing_date = results_container.find_element(By.XPATH, ".//p[contains(., 'Listed on')]").text.split(' : ')[-1]
+            except NoSuchElementException:
+                pass
+            
             scraped_data = {
-                'court_name': results_container.find_element(By.TAG_NAME, "h5").text,
-                'judge_name': results_container.find_element(By.XPATH, ".//p[contains(., 'In The Court Of')]").text.replace("In The Court Of : ", ""),
-                'listing_date': results_container.find_element(By.XPATH, ".//p[contains(., 'Listed on')]").text.split(' : ')[-1],
+                'court_name': court_name,
+                'judge_name': judge_name,
+                'listing_date': listing_date,
                 'cases': cases
             }
             pdf_filename = generate_pdf_from_data(scraped_data)
             return {"status": "success", "file": pdf_filename}
 
-        except NoSuchElementException:
-             # This can happen if the page loads weirdly.
+        except NoSuchElementException as e:
+             print(f"Extraction Error: {e}")
              return {"status": "error", "data": "The results page did not load correctly. Please try again."}
 
     except TimeoutException:
